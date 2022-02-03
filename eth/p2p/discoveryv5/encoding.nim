@@ -31,12 +31,13 @@ logScope:
   topics = "discv5"
 
 const
-  version: uint16 = 1
+  discv5_protocol_version {.intdefine.} : uint16 = 1
+  discv5_protocol_id {.strdefine.} = "discv5"
+  version = discv5_protocol_version
+  protocolId = toBytes(discv5_protocol_id)
+  gcmNonceSize* = 12
   idSignatureText  = "discovery v5 identity proof"
   keyAgreementPrefix = "discovery v5 key agreement"
-  protocolIdStr = "discv5"
-  protocolId = toBytes(protocolIdStr)
-  gcmNonceSize* = 12
   idNonceSize* = 16
   gcmTagSize* = 16
   ivSize* = 16
@@ -336,6 +337,8 @@ proc decodeHeader*(id: NodeId, iv, maskedHeader: openArray[byte]):
   # Decrypt static-header part of the header
   var staticHeader = newSeq[byte](staticHeaderSize)
   ectx.decrypt(maskedHeader.toOpenArray(0, staticHeaderSize - 1), staticHeader)
+
+  info "decoded protocol-id", id = staticHeader.toOpenArray(0, protocolId.len - 1)
 
   # Check fields of the static-header
   if staticHeader.toOpenArray(0, protocolId.len - 1) != protocolId:
