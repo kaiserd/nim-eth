@@ -35,9 +35,9 @@ const
   discv5_protocol_id {.strdefine.} = "discv5"
   version = discv5_protocol_version
   protocolId = toBytes(discv5_protocol_id)
-  gcmNonceSize* = 12
   idSignatureText  = "discovery v5 identity proof"
   keyAgreementPrefix = "discovery v5 key agreement"
+  gcmNonceSize* = 12
   idNonceSize* = 16
   gcmTagSize* = 16
   ivSize* = 16
