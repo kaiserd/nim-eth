@@ -338,8 +338,6 @@ proc decodeHeader*(id: NodeId, iv, maskedHeader: openArray[byte]):
   var staticHeader = newSeq[byte](staticHeaderSize)
   ectx.decrypt(maskedHeader.toOpenArray(0, staticHeaderSize - 1), staticHeader)
 
-  info "decoded protocol-id", id = staticHeader.toOpenArray(0, protocolId.len - 1)
-
   # Check fields of the static-header
   if staticHeader.toOpenArray(0, protocolId.len - 1) != protocolId:
     return err("Invalid protocol id")
