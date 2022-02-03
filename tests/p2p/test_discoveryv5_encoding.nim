@@ -289,8 +289,12 @@ suite "Discovery v5.1 Packet Encodings Test Vectors":
     codecB.sessions.store(nodeA.id, nodeA.address.get(),
       hexToByteArray[aesKeySize](readKey), hexToByteArray[aesKeySize](dummyKey))
 
-    let decoded = codecB.decodePacket(nodeA.address.get(),
-      hexToSeqByte(encodedPacket))
+    let
+      protocolIdStr = "discv5"
+      protocolId = toBytes(protocolIdStr)
+      decoded = decodePacket(protocolId, 1, codecB, nodeA.address.get(),
+
+    hexToSeqByte(encodedPacket))
     check:
       decoded.isOk()
       decoded.get().messageOpt.isSome()
@@ -309,7 +313,10 @@ suite "Discovery v5.1 Packet Encodings Test Vectors":
         "00000000000000000000000000000000088b3d434277464933a1ccc59f5967ad" &
         "1d6035f15e528627dde75cd68292f9e6c27d6b66c8100a873fcbaed4e16b8d"
 
-    let decoded = codecB.decodePacket(nodeA.address.get(),
+    let
+      protocolIdStr = "discv5"
+      protocolId = toBytes(protocolIdStr)
+      decoded = decodePacket(protocolId, 1, codecB, nodeA.address.get(),
       hexToSeqByte(encodedPacket))
 
     check:
@@ -320,7 +327,7 @@ suite "Discovery v5.1 Packet Encodings Test Vectors":
       decoded.get().whoareyou.recordSeq == whoareyouEnrSeq
       decoded.get().whoareyou.challengeData == hexToSeqByte(whoareyouChallengeData)
 
-      codecB.decodePacket(nodeA.address.get(),
+      decodePacket(protocolId, 1, codecB, nodeA.address.get(),
         hexToSeqByte(encodedPacket & "00")).isErr()
 
   test "Ping Handshake Message Packet":
@@ -356,7 +363,10 @@ suite "Discovery v5.1 Packet Encodings Test Vectors":
 
     check: not codecB.handshakes.hasKeyOrPut(key, challenge)
 
-    let decoded = codecB.decodePacket(nodeA.address.get(),
+    let
+      protocolIdStr = "discv5"
+      protocolId = toBytes(protocolIdStr)
+      decoded = decodePacket(protocolId, 1, codecB, nodeA.address.get(),
       hexToSeqByte(encodedPacket))
 
     check:
@@ -366,7 +376,7 @@ suite "Discovery v5.1 Packet Encodings Test Vectors":
       decoded.get().message.ping.enrSeq == pingEnrSeq
       decoded.get().node.isNone()
 
-      codecB.decodePacket(nodeA.address.get(),
+      decodePacket(protocolId, 1, codecB, nodeA.address.get(),
         hexToSeqByte(encodedPacket & "00")).isErr()
 
   test "Ping Handshake Message Packet with ENR":
@@ -406,7 +416,10 @@ suite "Discovery v5.1 Packet Encodings Test Vectors":
 
     check: not codecB.handshakes.hasKeyOrPut(key, challenge)
 
-    let decoded = codecB.decodePacket(nodeA.address.get(),
+    let
+      protocolIdStr = "discv5"
+      protocolId = toBytes(protocolIdStr)
+      decoded = decodePacket(protocolId, 1, codecB, nodeA.address.get(),
       hexToSeqByte(encodedPacket))
 
     check:
@@ -416,7 +429,7 @@ suite "Discovery v5.1 Packet Encodings Test Vectors":
       decoded.get().message.ping.enrSeq == pingEnrSeq
       decoded.get().node.isSome()
 
-      codecB.decodePacket(nodeA.address.get(),
+      decodePacket(protocolId, 1, codecB, nodeA.address.get(),
         hexToSeqByte(encodedPacket & "00")).isErr()
 
 suite "Discovery v5.1 Additional Encode/Decode":
@@ -462,7 +475,10 @@ suite "Discovery v5.1 Additional Encode/Decode":
       privKey = PrivateKey.random(rng[])
       nodeId = privKey.toPublicKey().toNodeId()
       authdata = newSeq[byte](32)
-      staticHeader = encodeStaticHeader(Flag.OrdinaryMessage, nonce,
+
+      protocolIdStr = "discv5"
+      protocolId = toBytes(protocolIdStr)
+      staticHeader = encodeStaticHeader(protocolId, 1, Flag.OrdinaryMessage, nonce,
         authdata.len())
       header = staticHeader & authdata
 
@@ -471,7 +487,7 @@ suite "Discovery v5.1 Additional Encode/Decode":
 
     let
       encrypted = encryptHeader(nodeId, iv, header)
-      decoded = decodeHeader(nodeId, iv, encrypted)
+      decoded = decodeHeader(protocolId, 1, nodeId, iv, encrypted)
 
     check decoded.isOk()
 
@@ -499,11 +515,13 @@ suite "Discovery v5.1 Additional Encode/Decode":
       m = PingMessage(enrSeq: 0)
       reqId = RequestId.init(rng[])
       message = encodeMessage(m, reqId)
+      protocolIdStr = "discv5"
+      protocolId = toBytes(protocolIdStr)
 
-    let (data, nonce) = encodeMessagePacket(rng[], codecA, nodeB.id,
+    let (data, nonce) = encodeMessagePacket(protocolId, 1, rng[], codecA, nodeB.id,
       nodeB.address.get(), message)
 
-    let decoded = codecB.decodePacket(nodeA.address.get(), data)
+    let decoded = decodePacket(protocolId, 1, codecB, nodeA.address.get(), data)
     check:
       decoded.isOk()
       decoded[].flag == OrdinaryMessage
@@ -513,12 +531,15 @@ suite "Discovery v5.1 Additional Encode/Decode":
   test "Encode / Decode Whoareyou Packet":
     var requestNonce: AESGCMNonce
     brHmacDrbgGenerate(rng[], requestNonce)
-    let recordSeq = 0'u64
+    let
+      recordSeq = 0'u64
+      protocolIdStr = "discv5"
+      protocolId = toBytes(protocolIdStr)
 
-    let data = encodeWhoareyouPacket(rng[], codecA, nodeB.id,
+    let data = encodeWhoareyouPacket(protocolId, 1, rng[], codecA, nodeB.id,
       nodeB.address.get(), requestNonce, recordSeq, none(PublicKey))
 
-    let decoded = codecB.decodePacket(nodeA.address.get(), data)
+    let decoded = decodePacket(protocolId, 1, codecB, nodeA.address.get(), data)
 
     let key = HandshakeKey(nodeId: nodeB.id, address: nodeB.address.get())
     var challenge: Challenge
@@ -545,15 +566,17 @@ suite "Discovery v5.1 Additional Encode/Decode":
     # whoareyou data returned. It's either that or construct the header for the
     # whoareyouData manually.
     let
-      encodedDummy = encodeWhoareyouPacket(rng[], codecB, nodeA.id,
+      protocolIdStr = "discv5"
+      protocolId = toBytes(protocolIdStr)
+      encodedDummy = encodeWhoareyouPacket(protocolId, 1, rng[], codecB, nodeA.id,
         nodeA.address.get(), requestNonce, recordSeq, pubkey)
-      decodedDummy = codecA.decodePacket(nodeB.address.get(), encodedDummy)
+      decodedDummy = decodePacket(protocolId, 1, codecA, nodeB.address.get(), encodedDummy)
 
-    let data = encodeHandshakePacket(rng[], codecA, nodeB.id,
+    let data = encodeHandshakePacket(protocolId, 1, rng[], codecA, nodeB.id,
       nodeB.address.get(), message, decodedDummy[].whoareyou,
       privKeyB.toPublicKey())
 
-    let decoded = codecB.decodePacket(nodeA.address.get(), data)
+    let decoded = decodePacket(protocolId, 1, codecB, nodeA.address.get(), data)
 
     check:
       decoded.isOk()
@@ -576,15 +599,17 @@ suite "Discovery v5.1 Additional Encode/Decode":
     # whoareyou data returned. It's either that or construct the header for the
     # whoareyouData manually.
     let
-      encodedDummy = encodeWhoareyouPacket(rng[], codecB, nodeA.id,
+      protocolIdStr = "discv5"
+      protocolId = toBytes(protocolIdStr)
+      encodedDummy = encodeWhoareyouPacket(protocolId, 1, rng[], codecB, nodeA.id,
         nodeA.address.get(), requestNonce, recordSeq, pubkey)
-      decodedDummy = codecA.decodePacket(nodeB.address.get(), encodedDummy)
+      decodedDummy = decodePacket(protocolId, 1, codecA, nodeB.address.get(), encodedDummy)
 
-    let encoded = encodeHandshakePacket(rng[], codecA, nodeB.id,
+    let encoded = encodeHandshakePacket(protocolId, 1, rng[], codecA, nodeB.id,
       nodeB.address.get(), message, decodedDummy[].whoareyou,
       privKeyB.toPublicKey())
 
-    let decoded = codecB.decodePacket(nodeA.address.get(), encoded)
+    let decoded = decodePacket(protocolId, 1, codecB, nodeA.address.get(), encoded)
 
     check:
       decoded.isOk()
@@ -608,10 +633,14 @@ suite "Discovery v5.1 Additional Encode/Decode":
     codecB.sessions.store(nodeA.id, nodeA.address.get(), secrets.initiatorKey,
       secrets.recipientKey)
 
-    let (data, nonce) = encodeMessagePacket(rng[], codecA, nodeB.id,
+    let
+      protocolIdStr = "discv5"
+      protocolId = toBytes(protocolIdStr)
+
+    let (data, nonce) = encodeMessagePacket(protocolId, 1, rng[], codecA, nodeB.id,
       nodeB.address.get(), message)
 
-    let decoded = codecB.decodePacket(nodeA.address.get(), data)
+    let decoded = decodePacket(protocolId, 1, codecB, nodeA.address.get(), data)
     check:
       decoded.isOk()
       decoded.get().flag == OrdinaryMessage

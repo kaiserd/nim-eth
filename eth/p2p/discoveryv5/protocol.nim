@@ -94,7 +94,7 @@ declareCounter discovery_enr_auto_update,
   "Amount of discovery IP:port address ENR auto updates"
 
 logScope:
-  topics = "discv5"
+  topics = "discv5" # do we have to change this to the protocol-id?
 
 const
   alpha = 3 ## Kademlia concurrency factor
@@ -117,6 +117,8 @@ const
 
 type
   Protocol* = ref object
+    protocolId*: seq[byte]
+    protocolVersion*: uint16
     transp: DatagramTransport
     localNode*: Node
     privateKey: PrivateKey
@@ -249,7 +251,7 @@ proc sendNodes(d: Protocol, toId: NodeId, toAddr: Address, reqId: RequestId,
     nodes: openArray[Node]) =
   proc sendNodes(d: Protocol, toId: NodeId, toAddr: Address,
       message: NodesMessage, reqId: RequestId) {.nimcall.} =
-    let (data, _) = encodeMessagePacket(d.rng[], d.codec, toId, toAddr,
+    let (data, _) = encodeMessagePacket(d.protocolId, d.protocolVersion, d.rng[], d.codec, toId, toAddr,
       encodeMessage(message, reqId))
 
     trace "Respond message packet", dstId = toId, address = toAddr,
@@ -281,7 +283,7 @@ proc handlePing(d: Protocol, fromId: NodeId, fromAddr: Address,
   let pong = PongMessage(enrSeq: d.localNode.record.seqNum, ip: fromAddr.ip,
     port: fromAddr.port.uint16)
 
-  let (data, _) = encodeMessagePacket(d.rng[], d.codec, fromId, fromAddr,
+  let (data, _) = encodeMessagePacket(d.protocolId, d.protocolVersion, d.rng[], d.codec, fromId, fromAddr,
     encodeMessage(pong, reqId))
 
   trace "Respond message packet", dstId = fromId, address = fromAddr,
@@ -319,7 +321,7 @@ proc handleTalkReq(d: Protocol, fromId: NodeId, fromAddr: Address,
     else:
       TalkRespMessage(response: talkProtocol.protocolHandler(talkProtocol,
         talkreq.request, fromId, fromAddr))
-  let (data, _) = encodeMessagePacket(d.rng[], d.codec, fromId, fromAddr,
+  let (data, _) = encodeMessagePacket(d.protocolId, d.protocolVersion,  d.rng[], d.codec, fromId, fromAddr,
     encodeMessage(talkresp, reqId))
 
   trace "Respond message packet", dstId = fromId, address = fromAddr,
@@ -370,7 +372,7 @@ proc sendWhoareyou(d: Protocol, toId: NodeId, a: Address,
       pubkey = if node.isSome(): some(node.get().pubkey)
               else: none(PublicKey)
 
-    let data = encodeWhoareyouPacket(d.rng[], d.codec, toId, a, requestNonce,
+    let data = encodeWhoareyouPacket(d.protocolId, d.protocolVersion, d.rng[], d.codec, toId, a, requestNonce,
       recordSeq, pubkey)
     sleepAsync(handshakeTimeout).addCallback() do(data: pointer):
     # TODO: should we still provide cancellation in case handshake completes
@@ -383,7 +385,7 @@ proc sendWhoareyou(d: Protocol, toId: NodeId, a: Address,
     debug "Node with this id already has ongoing handshake, ignoring packet"
 
 proc receive*(d: Protocol, a: Address, packet: openArray[byte]) =
-  let decoded = d.codec.decodePacket(a, packet)
+  let decoded = decodePacket(d.protocolId, d.protocolVersion, d.codec, a, packet)
   if decoded.isOk:
     let packet = decoded[]
     case packet.flag
@@ -407,7 +409,7 @@ proc receive*(d: Protocol, a: Address, packet: openArray[byte]) =
         # This is a node we previously contacted and thus must have an address.
         doAssert(toNode.address.isSome())
         let address = toNode.address.get()
-        let data = encodeHandshakePacket(d.rng[], d.codec, toNode.id,
+        let data = encodeHandshakePacket(d.protocolId, d.protocolVersion, d.rng[], d.codec, toNode.id,
           address, pr.message, packet.whoareyou, toNode.pubkey)
 
         trace "Send handshake message packet", dstId = toNode.id, address
@@ -517,7 +519,7 @@ proc sendMessage*[T: SomeMessage](d: Protocol, toNode: Node, m: T):
     reqId = RequestId.init(d.rng[])
     message = encodeMessage(m, reqId)
 
-  let (data, nonce) = encodeMessagePacket(d.rng[], d.codec, toNode.id,
+  let (data, nonce) = encodeMessagePacket(d.protocolId, d.protocolVersion, d.rng[], d.codec, toNode.id,
     address, message)
 
   d.registerRequest(toNode, message, nonce)
@@ -880,7 +882,9 @@ proc ipMajorityLoop(d: Protocol) {.async.} =
   except CancelledError:
     trace "ipMajorityLoop canceled"
 
-proc newProtocol*(privKey: PrivateKey,
+proc newProtocol*(protocolId: openArray[byte],
+                  protocolVersion: uint16,
+                  privKey: PrivateKey,
                   enrIp: Option[ValidIpAddress],
                   enrTcpPort, enrUdpPort: Option[Port],
                   localEnrFields: openArray[(string, seq[byte])] = [],
@@ -925,6 +929,8 @@ proc newProtocol*(privKey: PrivateKey,
   doAssert rng != nil, "RNG initialization failed"
 
   Protocol(
+    protocolId: @protocolId,
+    protocolVersion: protocolVersion,
     privateKey: privKey,
     localNode: node,
     bindAddress: Address(ip: ValidIpAddress.init(bindIp), port: bindPort),

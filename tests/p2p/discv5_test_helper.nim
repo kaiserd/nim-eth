@@ -1,5 +1,5 @@
 import
-  stew/shims/net, bearssl, chronos,
+  stew/shims/net, stew/byteutils, bearssl, chronos,
   ../../eth/keys,
   ../../eth/p2p/discoveryv5/[enr, node, routing_table],
   ../../eth/p2p/discoveryv5/protocol as discv5_protocol
@@ -9,7 +9,8 @@ export net
 proc localAddress*(port: int): Address =
   Address(ip: ValidIpAddress.init("127.0.0.1"), port: Port(port))
 
-proc initDiscoveryNode*(rng: ref BrHmacDrbgContext, privKey: PrivateKey,
+proc initDiscoveryNode*(protocolId: openArray[byte], protocolVersion: uint16,
+                        rng: ref BrHmacDrbgContext, privKey: PrivateKey,
                         address: Address,
                         bootstrapRecords: openArray[Record] = [],
                         localEnrFields: openArray[(string, seq[byte])] = [],
@@ -18,7 +19,9 @@ proc initDiscoveryNode*(rng: ref BrHmacDrbgContext, privKey: PrivateKey,
   # set bucketIpLimit to allow bucket split
   let tableIpLimits = TableIpLimits(tableIpLimit: 1000,  bucketIpLimit: 24)
 
-  result = newProtocol(privKey,
+  result = newProtocol(protocolId,
+                       protocolVersion,
+                       privKey,
                        some(address.ip),
                        some(address.port), some(address.port),
                        bindPort = address.port,

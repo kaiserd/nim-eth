@@ -28,6 +28,16 @@ type
       desc: "Listening address for the Discovery v5 traffic"
       name: "listen-address" }: ValidIpAddress
 
+    protocolID* {.
+      defaultValue: "discv5"
+      desc: "protocol-id"
+      name: "protocol-id" .}: string
+
+    protocolVersion* {.
+      defaultValue: 1
+      desc: "protocol-version"
+      name: "protocol-version" .}: uint16
+
     bootnodes* {.
       desc: "ENR URI of node to bootstrap discovery with. Argument may be repeated"
       name: "bootnode" .}: seq[enr.Record]
@@ -139,13 +149,17 @@ proc discover(d: protocol.Protocol) {.async.} =
 
 proc run(config: DiscoveryConf) =
   let
+    protocolId = toBytes(config.protocolId)
     bindIp = config.listenAddress
     udpPort = Port(config.udpPort)
     # TODO: allow for no TCP port mapping!
     (extIp, _, extUdpPort) = setupAddress(config.nat,
       config.listenAddress, udpPort, udpPort, "dcli")
 
-  let d = newProtocol(config.nodeKey,
+  let d = newProtocol(
+          protocolID = protocolID,
+          config.protocolVersion,
+          config.nodeKey,
           extIp, none(Port), extUdpPort,
           bootstrapRecords = config.bootnodes,
           bindIp = bindIp, bindPort = udpPort,

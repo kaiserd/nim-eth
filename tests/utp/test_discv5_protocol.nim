@@ -19,7 +19,8 @@ import
 proc localAddress*(port: int): Address =
   Address(ip: ValidIpAddress.init("127.0.0.1"), port: Port(port))
 
-proc initDiscoveryNode*(rng: ref BrHmacDrbgContext,
+proc initDiscoveryNode*(protocolId: openArray[byte], protocolVersion: uint16,
+    rng: ref BrHmacDrbgContext,
     privKey: PrivateKey,
     address: Address,
     bootstrapRecords: openArray[Record] = [],
@@ -28,7 +29,10 @@ proc initDiscoveryNode*(rng: ref BrHmacDrbgContext,
   # set bucketIpLimit to allow bucket split
   let tableIpLimits = TableIpLimits(tableIpLimit: 1000,  bucketIpLimit: 24)
 
-  result = newProtocol(privKey,
+  result = newProtocol(
+    protocolId,
+    protocolVersion,
+    privKey,
     some(address.ip),
     some(address.port), some(address.port),
     bindPort = address.port,
@@ -46,8 +50,11 @@ proc generateByteArray(rng: var BrHmacDrbgContext, length: int): seq[byte] =
   return bytes
 
 procSuite "Utp protocol over discovery v5 tests":
-  let rng = newRng()
-  let utpProtId = "test-utp".toBytes()
+  let
+    rng = newRng()
+    utpProtId = "test-utp".toBytes()
+    protocolId = "d5waku".toBytes()
+    protocolVersion: uint16 = 1
 
   proc registerIncomingSocketCallback(serverSockets: AsyncQueue): AcceptConnectionCallback[NodeAddress] =
     return (
@@ -66,9 +73,9 @@ procSuite "Utp protocol over discovery v5 tests":
   asyncTest "Success connect to remote host":
     let
       queue = newAsyncQueue[UtpSocket[NodeAddress]]()
-      node1 = initDiscoveryNode(
+      node1 = initDiscoveryNode(protocolId, protocolVersion,
         rng, PrivateKey.random(rng[]), localAddress(20302))
-      node2 = initDiscoveryNode(
+      node2 = initDiscoveryNode(protocolId, protocolVersion,
         rng, PrivateKey.random(rng[]), localAddress(20303))
 
       utp1 = UtpDiscv5Protocol.new(node1, utpProtId, registerIncomingSocketCallback(queue))
@@ -96,9 +103,9 @@ procSuite "Utp protocol over discovery v5 tests":
   asyncTest "Success write data over packet size to remote host":
     let
       queue = newAsyncQueue[UtpSocket[NodeAddress]]()
-      node1 = initDiscoveryNode(
+      node1 = initDiscoveryNode(protocolId, protocolVersion,
         rng, PrivateKey.random(rng[]), localAddress(20302))
-      node2 = initDiscoveryNode(
+      node2 = initDiscoveryNode(protocolId, protocolVersion,
         rng, PrivateKey.random(rng[]), localAddress(20303))
 
       utp1 = UtpDiscv5Protocol.new(node1, utpProtId, registerIncomingSocketCallback(queue))
@@ -135,9 +142,9 @@ procSuite "Utp protocol over discovery v5 tests":
       allowedId: uint16 = 10
       lowSynTimeout = milliseconds(500)
       queue = newAsyncQueue[UtpSocket[NodeAddress]]()
-      node1 = initDiscoveryNode(
+      node1 = initDiscoveryNode(protocolId, protocolVersion,
         rng, PrivateKey.random(rng[]), localAddress(20302))
-      node2 = initDiscoveryNode(
+      node2 = initDiscoveryNode(protocolId, protocolVersion,
         rng, PrivateKey.random(rng[]), localAddress(20303))
 
       utp1 = UtpDiscv5Protocol.new(
@@ -179,9 +186,9 @@ procSuite "Utp protocol over discovery v5 tests":
   asyncTest "Configure incoming connections to be in connected state":
     let
       queue = newAsyncQueue[UtpSocket[NodeAddress]]()
-      node1 = initDiscoveryNode(
+      node1 = initDiscoveryNode(protocolId, protocolVersion,
         rng, PrivateKey.random(rng[]), localAddress(20302))
-      node2 = initDiscoveryNode(
+      node2 = initDiscoveryNode(protocolId, protocolVersion,
         rng, PrivateKey.random(rng[]), localAddress(20303))
 
       utp1 = UtpDiscv5Protocol.new(node1, utpProtId, registerIncomingSocketCallback(queue))

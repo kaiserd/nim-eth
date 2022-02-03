@@ -34,13 +34,12 @@ const
   version: uint16 = 1
   idSignatureText  = "discovery v5 identity proof"
   keyAgreementPrefix = "discovery v5 key agreement"
-  protocolIdStr = "discv5"
-  protocolId = toBytes(protocolIdStr)
+  protocolIdLen = 6 # TODO should we fix this to 6?
   gcmNonceSize* = 12
   idNonceSize* = 16
   gcmTagSize* = 16
   ivSize* = 16
-  staticHeaderSize = protocolId.len + 2 + 2 + 1 + gcmNonceSize
+  staticHeaderSize = protocolIdLen + 2 + 2 + 1 + gcmNonceSize
   authdataHeadSize = sizeof(NodeId) + 1 + 1
   whoareyouSize = ivSize + staticHeaderSize + idNonceSize + 8
 
@@ -179,7 +178,8 @@ proc encryptHeader*(id: NodeId, iv, header: openArray[byte]): seq[byte] =
 proc hasHandshake*(c: Codec, key: HandshakeKey): bool =
   c.handshakes.hasKey(key)
 
-proc encodeStaticHeader*(flag: Flag, nonce: AESGCMNonce, authSize: int):
+proc encodeStaticHeader*(protocolId: openArray[byte], protocolVersion: uint16,
+  flag: Flag, nonce: AESGCMNonce, authSize: int):
     seq[byte] =
   result.add(protocolId)
   result.add(version.toBytesBE())
@@ -188,7 +188,8 @@ proc encodeStaticHeader*(flag: Flag, nonce: AESGCMNonce, authSize: int):
   # TODO: assert on authSize of > 2^16?
   result.add((uint16(authSize)).toBytesBE())
 
-proc encodeMessagePacket*(rng: var BrHmacDrbgContext, c: var Codec,
+proc encodeMessagePacket*(protocolId: openArray[byte], protocolVersion: uint16,
+    rng: var BrHmacDrbgContext, c: var Codec,
     toId: NodeId, toAddr: Address, message: openArray[byte]):
     (seq[byte], AESGCMNonce) =
   var nonce: AESGCMNonce
@@ -198,7 +199,7 @@ proc encodeMessagePacket*(rng: var BrHmacDrbgContext, c: var Codec,
 
   # static-header
   let authdata = c.localNode.id.toByteArrayBE()
-  let staticHeader = encodeStaticHeader(Flag.OrdinaryMessage, nonce,
+  let staticHeader = encodeStaticHeader(protocolId, version, Flag.OrdinaryMessage, nonce,
     authdata.len())
   # header = static-header || authdata
   var header: seq[byte]
@@ -233,7 +234,8 @@ proc encodeMessagePacket*(rng: var BrHmacDrbgContext, c: var Codec,
 
   return (packet, nonce)
 
-proc encodeWhoareyouPacket*(rng: var BrHmacDrbgContext, c: var Codec,
+proc encodeWhoareyouPacket*(protocolId: openArray[byte], protocolVersion: uint16,
+    rng: var BrHmacDrbgContext, c: var Codec,
     toId: NodeId, toAddr: Address, requestNonce: AESGCMNonce, recordSeq: uint64,
     pubkey: Option[PublicKey]): seq[byte] =
   var idNonce: IdNonce
@@ -245,7 +247,7 @@ proc encodeWhoareyouPacket*(rng: var BrHmacDrbgContext, c: var Codec,
   authdata.add(recordSeq.toBytesBE)
 
   # static-header
-  let staticHeader = encodeStaticHeader(Flag.Whoareyou, requestNonce,
+  let staticHeader = encodeStaticHeader(protocolId, protocolVersion, Flag.Whoareyou, requestNonce,
     authdata.len())
 
   # header = static-header || authdata
@@ -275,7 +277,8 @@ proc encodeWhoareyouPacket*(rng: var BrHmacDrbgContext, c: var Codec,
 
   return packet
 
-proc encodeHandshakePacket*(rng: var BrHmacDrbgContext, c: var Codec,
+proc encodeHandshakePacket*(protocolId: openArray[byte], protocolVersion: uint16,
+    rng: var BrHmacDrbgContext, c: var Codec,
     toId: NodeId, toAddr: Address, message: openArray[byte],
     whoareyouData: WhoareyouData, pubkey: PublicKey): seq[byte] =
   var header: seq[byte]
@@ -308,7 +311,7 @@ proc encodeHandshakePacket*(rng: var BrHmacDrbgContext, c: var Codec,
     whoareyouData.challengeData)
 
   # Header
-  let staticHeader = encodeStaticHeader(Flag.HandshakeMessage, nonce,
+  let staticHeader = encodeStaticHeader(protocolId, protocolVersion, Flag.HandshakeMessage, nonce,
     authdata.len())
 
   header.add(staticHeader)
@@ -327,7 +330,7 @@ proc encodeHandshakePacket*(rng: var BrHmacDrbgContext, c: var Codec,
 
   return packet
 
-proc decodeHeader*(id: NodeId, iv, maskedHeader: openArray[byte]):
+proc decodeHeader*(protocolId: openArray[byte], protocolVersion: uint16, id: NodeId, iv, maskedHeader: openArray[byte]):
     DecodeResult[(StaticHeader, seq[byte])] =
   # No need to check staticHeader size as that is included in minimum packet
   # size check in decodePacket
@@ -573,7 +576,7 @@ proc decodeHandshakePacket(c: var Codec, fromAddr: Address, nonce: AESGCMNonce,
   return ok(Packet(flag: Flag.HandshakeMessage, message: message,
     srcIdHs: srcId, node: newNode))
 
-proc decodePacket*(c: var Codec, fromAddr: Address, input: openArray[byte]):
+proc decodePacket*(protocolId: openArray[byte], protocolVersion: uint16, c: var Codec, fromAddr: Address, input: openArray[byte]):
     DecodeResult[Packet] =
   ## Decode a packet. This can be a regular packet or a packet in response to a
   ## WHOAREYOU packet. In case of the latter a `newNode` might be provided.
@@ -582,7 +585,7 @@ proc decodePacket*(c: var Codec, fromAddr: Address, input: openArray[byte]):
     return err("Packet size too short")
 
   # TODO: Just pass in the full input? Makes more sense perhaps.
-  let (staticHeader, header) = ? decodeHeader(c.localNode.id,
+  let (staticHeader, header) = ? decodeHeader(protocolId, protocolVersion, c.localNode.id,
     input.toOpenArray(0, ivSize - 1), # IV
     # Don't know the size yet of the full header, so we pass all.
     input.toOpenArray(ivSize, input.high))
